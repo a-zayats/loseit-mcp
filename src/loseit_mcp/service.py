@@ -200,7 +200,7 @@ def _parse_date(value: str | date | None, hours_from_gmt: int | None = None) -> 
     try:
         # A calendar date carries no time or zone of its own; the account
         # offset is applied by the caller where it matters.
-        return datetime.strptime(text, "%Y-%m-%d").date()
+        return date.fromisoformat(text)
     except ValueError as exc:
         raise ValueError(
             f"Invalid date {value!r}; use YYYY-MM-DD, 'today', or 'yesterday'."
@@ -211,7 +211,7 @@ def account_today(hours_from_gmt: int | None) -> date:
     """Today's date in the account's timezone."""
     if hours_from_gmt is None:
         # No configured offset — the host's local date is the best guess.
-        return date.today()
+        return datetime.now().astimezone().date()
     return datetime.now(tz=timezone(timedelta(hours=hours_from_gmt))).date()
 
 
