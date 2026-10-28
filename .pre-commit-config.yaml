@@ -1,7 +1,14 @@
 # Install once per clone: pip install pre-commit && pre-commit install
-# Then every commit runs gitleaks on the staged diff, before it exists.
+# Then every commit runs gitleaks and ruff on the staged diff, before it exists.
+# The ruff rev here must match the ruff pin in pyproject.toml (and uv.lock),
+# otherwise local lint and CI lint will drift apart again.
 repos:
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:
       - id: gitleaks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff
+        args: [--check, src, tests]
