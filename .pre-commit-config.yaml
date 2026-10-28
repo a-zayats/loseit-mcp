@@ -11,4 +11,4 @@ repos:
     rev: v0.16.0
     hooks:
       - id: ruff
-        args: [--check, src, tests]
+        args: [src, tests]
