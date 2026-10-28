@@ -33,6 +33,7 @@ from lose_it.core.daily import get_daydate_key
 
 from .auth import Session, resolve_session
 from .config import Settings
+from .gwt import GwtExtractionError, extract_build  # noqa: F401  (re-exported for tests)
 from .observability import current_request_id
 from .weight import get_weight_history as _get_weight_history
 from .weight import save_weight
@@ -108,17 +109,35 @@ def _is_auth_failure(exc: Exception) -> bool:
     return False
 
 
+def _is_gwt_stale_error(exc: Exception) -> bool:
+    """True if ``exc`` means the pinned GWT build identifiers are stale.
+
+    ``IncompatibleRemoteServiceException`` is the server's reply when it
+    cannot deserialize a GWT request — the signature of a new web build
+    with a new permutation/policy pair. It is deliberately distinguished
+    from auth failures (which use different markers) and from generic
+    protocol errors: this rejection happens during deserialization,
+    before the service method runs, so a retry with fresh identifiers
+    cannot double-apply a write that the server never executed.
+    """
+    if _is_auth_failure(exc):
+        return False
+    return "IncompatibleRemoteServiceException" in str(exc)
+
+
 # Lose It's search endpoint intermittently answers with a bare
 # ``java.lang.RuntimeException`` — measured at roughly a third of calls in one
 # sitting, on the search RPC specifically and not on food lookups. It carries
 # no detail and clears on an immediate retry, so it is a fault on their side
 # rather than anything about the request.
 #
-# Deliberately *not* including IncompatibleRemoteServiceException: that means
-# Lose It shipped a new GWT build, which is permanent until an operator
-# refreshes the strong name. `errors.translate` says as much in the message it
-# produces, so retrying it burns the budget during a total outage to arrive at
-# an answer that already said retrying won't help.
+# Deliberately *not* including IncompatibleRemoteServiceException here: that
+# means Lose It shipped a new GWT build. It is handled separately by the
+# GWT-refresh path in ``_refresh_gwt_build`` (re-extract the identifiers
+# from the public bundle, rebuild the client, retry once), not by the
+# transient loop — retrying with the stale identifiers would burn the
+# budget during a total outage to arrive at an answer that already said
+# retrying won't help.
 _TRANSIENT_MARKERS = (
     "java.lang.RuntimeException",
     "java.lang.NullPointerException",
@@ -288,6 +307,49 @@ class LoseItService:
             # be able to deadlock this service.
             self.on_reauthenticated(session)
 
+    def _refresh_gwt_build(self) -> bool:
+        """Re-extract the GWT build identifiers and rebuild the client.
+
+        Returns True only when the extracted identifiers differ from the
+        ones currently in use. That is what makes this safe to call from a
+        retry loop: if the extraction yields the same values (or fails),
+        the caller must not retry — the identifiers are not the problem,
+        or they cannot be fixed from here.
+
+        Unlike re-authentication, this does *not* touch the session or
+        token: the session is still good, only the build identifiers
+        changed. The old client is retired, not closed under a caller,
+        exactly as in ``_reauthenticate``.
+        """
+        try:
+            build = extract_build(self._settings.base_url)
+        except GwtExtractionError as exc:
+            logger.warning("GWT refresh failed, keeping pinned values: %s", exc)
+            return False
+        if (
+            build.strong_name == self._settings.strong_name
+            and build.policy_hash == self._settings.policy_hash
+        ):
+            logger.info("GWT refresh found the identifiers already current")
+            return False
+        with self._lock:
+            if self._client is not None:
+                self._retired.append(self._client)
+                self._client = None
+            self._settings = self._settings.with_overrides(
+                strong_name=build.strong_name,
+                policy_hash=build.policy_hash,
+            )
+            reclaimed = self._reclaim_retired()
+        logger.info(
+            "refreshed GWT build: strong_name=%s policy_hash=%s",
+            build.strong_name,
+            build.policy_hash,
+        )
+        for client in reclaimed:
+            client.close()
+        return True
+
     def _reclaim_retired(self) -> list[LoseIt]:
         """Take ownership of retired clients that are safe to close.
 
@@ -316,6 +378,13 @@ class LoseItService:
     def _retrying(self, fn: Callable[[], _T]) -> _T:
         """Run ``fn``, retrying once after re-authenticating on auth failure.
 
+        Also retries once after a GWT refresh, but *only* for the specific
+        stale-build error (``IncompatibleRemoteServiceException``). That
+        rejection happens during deserialization, before the service method
+        runs, so the write was never applied and retrying it cannot double
+        it. Any other protocol error is not retried here: a write that
+        appears to fail may still have been applied.
+
         Records the session generation before running. If several callers fail
         together — which is exactly what happens when a token expires while a
         search has eight enrichment threads in flight — only the first performs
@@ -327,11 +396,15 @@ class LoseItService:
             with self._in_flight():
                 return fn()
         except Exception as exc:
-            if not _is_auth_failure(exc):
-                raise
-            self._reauthenticate(seen_generation=generation)
-            with self._in_flight():
-                return fn()
+            if _is_auth_failure(exc):
+                self._reauthenticate(seen_generation=generation)
+                with self._in_flight():
+                    return fn()
+            if _is_gwt_stale_error(exc) and self._refresh_gwt_build():
+                logger.info("GWT build refreshed, retrying write once")
+                with self._in_flight():
+                    return fn()
+            raise
 
     def _reading(self, fn: Callable[[], _T], *, what: str = "read") -> _T:
         """Run a *read* under one attempt budget covering auth and transient faults.
@@ -354,6 +427,18 @@ class LoseItService:
             except Exception as exc:
                 last = exc
                 final = attempt == _READ_ATTEMPTS
+                if _is_gwt_stale_error(exc) and not final:
+                    # Reads are idempotent, so a refresh-and-retry is safe
+                    # here. If the refresh yields the same identifiers (or
+                    # fails), _refresh_gwt_build returns False and the
+                    # original error is raised below via the transient
+                    # check — it is not a transient error, so it raises.
+                    if self._refresh_gwt_build():
+                        logger.info(
+                            "GWT build refreshed during %s, retrying", what
+                        )
+                        time.sleep(_TRANSIENT_BACKOFF * random.uniform(0.5, 1.5))
+                        continue
                 if _is_auth_failure(exc):
                     # One re-login per read. Three back-to-back password logins
                     # in a few hundred milliseconds is lockout-shaped, and if

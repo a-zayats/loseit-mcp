@@ -1,0 +1,7 @@
+# Install once per clone: pip install pre-commit && pre-commit install
+# Then every commit runs gitleaks on the staged diff, before it exists.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

@@ -4,8 +4,11 @@
 !.env.example
 token
 *.token
+token.txt
 secrets.json
 *.secret
+session.json
+.session/
 
 # Deployment notes containing real Azure resource names
 DEPLOYMENT-PRIVATE.md

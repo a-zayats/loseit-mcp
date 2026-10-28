@@ -28,10 +28,13 @@ CONFIG_DIR = Path.home() / ".config" / "loseit-mcp"
 DEFAULT_CONFIG_FILE = CONFIG_DIR / "config.json"
 DEFAULT_SESSION_FILE = CONFIG_DIR / "session.json"
 
-# Tied to the current Lose It! web build. Override if they ship a new one and
-# the RPCs start failing.
-DEFAULT_STRONG_NAME = "351AE5DC0CA36AD3BA9C7CBA7B0E07B8"
-DEFAULT_POLICY_HASH = "8F87EC8969F17AE77B6283D3A83F6D4C"
+# Snapshot of the Lose It! web build as of 2026-10-28. These go stale when
+# Lose It ships a new build; the service now re-extracts them from the
+# public bundle on an IncompatibleRemoteServiceException (see gwt.py) and
+# retries, so a stale snapshot no longer requires a manual update — it
+# just costs one failed RPC before the refresh.
+DEFAULT_STRONG_NAME = "BFC488B2F9DCB4070D92CF9DD2B23810"
+DEFAULT_POLICY_HASH = "F5AA51DFF7600BE94631854AFC5DEFE9"
 DEFAULT_BASE_URL = "https://d3hsih69yn4d89.cloudfront.net/web/"
 
 LOGIN_URL = "https://api.loseit.com/account/login"

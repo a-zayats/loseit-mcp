@@ -1,0 +1,9 @@
+# Gitleaks allowlist for synthetic test data only.
+# The JWT below is constructed in tests/test_logging.py from a fixed
+# header/payload plus "s" * 40 as a fake signature. It is not a real
+# credential, and this pattern matches only that synthetic form, never
+# a real token whose signature is not 40 repeated letters.
+[allowlist]
+regexes = [
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMDMxMzQ5MiJ9\.s{40}''',
+]

@@ -27,9 +27,12 @@ _UPSTREAM_CHANGED = (
     "deployed a new version of their web app, which changes the protocol this "
     "server speaks.\n\n"
     "Nothing is wrong with your account or your food log. Tell the user this is "
-    "a server-side compatibility problem that needs the operator to refresh the "
-    "GWT build identifiers (LOSEIT_STRONG_NAME / LOSEIT_POLICY_HASH), and that "
-    "retrying now will not help.\n\n"
+    "a server-side compatibility problem. The server attempts to re-extract "
+    "the GWT build identifiers (LOSEIT_STRONG_NAME / LOSEIT_POLICY_HASH) "
+    "from Lose It's public web bundle and retry; if this message persists, "
+    "that automatic refresh did not produce working identifiers, and "
+    "retrying now will not help until the operator checks the bundle "
+    "format.\n\n"
     "Technical detail: {detail}"
 )
 
