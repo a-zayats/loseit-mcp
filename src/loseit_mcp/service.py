@@ -33,7 +33,7 @@ from lose_it.core.daily import get_daydate_key
 
 from .auth import Session, resolve_session
 from .config import Settings
-from .gwt import GwtExtractionError, extract_build  # noqa: F401  (re-exported for tests)
+from .gwt import GwtExtractionError, extract_build
 from .observability import current_request_id
 from .weight import get_weight_history as _get_weight_history
 from .weight import save_weight
@@ -200,7 +200,7 @@ def _parse_date(value: str | date | None, hours_from_gmt: int | None = None) -> 
     try:
         # A calendar date carries no time or zone of its own; the account
         # offset is applied by the caller where it matters.
-        return datetime.strptime(text, "%Y-%m-%d").date()  # noqa: DTZ007
+        return datetime.strptime(text, "%Y-%m-%d").date()
     except ValueError as exc:
         raise ValueError(
             f"Invalid date {value!r}; use YYYY-MM-DD, 'today', or 'yesterday'."
@@ -211,7 +211,7 @@ def account_today(hours_from_gmt: int | None) -> date:
     """Today's date in the account's timezone."""
     if hours_from_gmt is None:
         # No configured offset — the host's local date is the best guess.
-        return date.today()  # noqa: DTZ011
+        return date.today()
     return datetime.now(tz=timezone(timedelta(hours=hours_from_gmt))).date()
 
 
@@ -427,18 +427,21 @@ class LoseItService:
             except Exception as exc:
                 last = exc
                 final = attempt == _READ_ATTEMPTS
-                if _is_gwt_stale_error(exc) and not final:
-                    # Reads are idempotent, so a refresh-and-retry is safe
-                    # here. If the refresh yields the same identifiers (or
-                    # fails), _refresh_gwt_build returns False and the
-                    # original error is raised below via the transient
-                    # check — it is not a transient error, so it raises.
-                    if self._refresh_gwt_build():
-                        logger.info(
-                            "GWT build refreshed during %s, retrying", what
-                        )
-                        time.sleep(_TRANSIENT_BACKOFF * random.uniform(0.5, 1.5))
-                        continue
+                # Reads are idempotent, so a refresh-and-retry is safe
+                # here. If the refresh yields the same identifiers (or
+                # fails), _refresh_gwt_build returns False and the
+                # original error is raised below via the transient
+                # check — it is not a transient error, so it raises.
+                if (
+                    _is_gwt_stale_error(exc)
+                    and not final
+                    and self._refresh_gwt_build()
+                ):
+                    logger.info(
+                        "GWT build refreshed during %s, retrying", what
+                    )
+                    time.sleep(_TRANSIENT_BACKOFF * random.uniform(0.5, 1.5))
+                    continue
                 if _is_auth_failure(exc):
                     # One re-login per read. Three back-to-back password logins
                     # in a few hundred milliseconds is lockout-shaped, and if

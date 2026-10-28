@@ -71,17 +71,31 @@ _IDENT = r"[A-Za-z_$][A-Za-z0-9_$]*"
 # Older GWT bootstrap scripts map a user-agent key to a permutation hash
 # with answers[...] spellings. Kept as a fallback for older builds.
 _ANSWER_PATTERNS = (
-    re.compile(r"answers\[['\"]([^'\"]+)['\"]\]\s*=\s*['\"](%s)['\"]" % _HEX32),
-    re.compile(r"answers\.([A-Za-z0-9_]+)\s*=\s*['\"](%s)['\"]" % _HEX32),
-    re.compile(r"['\"]([A-Za-z0-9_]+)['\"]\s*:\s*['\"](%s)['\"]" % _HEX32),
+    re.compile(
+        "answers\\[['\"]([^'\"]+)['\"]\\]\\s*=\\s*['\"](" + _HEX32 + ")['\"]"
+    ),
+    re.compile(
+        "answers\\.([A-Za-z0-9_]+)\\s*=\\s*['\"](" + _HEX32 + ")['\"]"
+    ),
+    re.compile(
+        "['\"]([A-Za-z0-9_]+)['\"]\\s*:\\s*['\"](" + _HEX32 + ")['\"]"
+    ),
 )
 
 # k([locale, agent], strong_name) with optional +suffix for locale variants.
 _K_PATTERN = re.compile(
-    r"k\(\[(%s),(%s)\],(%s)(?:\+(%s))?\)" % (_IDENT, _IDENT, _IDENT, _IDENT)
+    "k\\(\\[("
+    + _IDENT
+    + "),("
+    + _IDENT
+    + ")\\],("
+    + _IDENT
+    + ")(?:\\+("
+    + _IDENT
+    + "))?\\)"
 )
 # String variable assignments, e.g. Mb='default', uc='BFC4...'.
-_VAR_PATTERN = re.compile(r"(%s)\s*=\s*'([^']*)'" % _IDENT)
+_VAR_PATTERN = re.compile("(" + _IDENT + r")\s*=\s*'([^']*)'")
 
 # Preference order for choosing a permutation. Any current permutation
 # should work as long as its policy hash is taken from the same file;
@@ -205,22 +219,25 @@ def parse_policy_hash(cache_text: str) -> str:
             continue
         # $td(type_id, ..., constructor)
         constructor_match = re.search(
-            r"\$td\(\s*%s\s*,\s*\d+\s*,\s*\{[^}]*\}\s*,\s*(%s)\s*\)"
-            % (type_id, _IDENT),
+            "\\$td\\(\\s*"
+            + type_id
+            + "\\s*,\\s*\\d+\\s*,\\s*\\{[^}]*\\}\\s*,\\s*("
+            + _IDENT
+            + ")\\s*\\)",
             cache_text,
         )
         if not constructor_match:
             continue
         constructor = constructor_match.group(1)
         function_match = re.search(
-            r"function %s\(\)\{" % re.escape(constructor), cache_text
+            "function " + re.escape(constructor) + r"\(\)\{", cache_text
         )
         if not function_match:
             continue
         window = cache_text[
             function_match.end() : function_match.end() + 2000
         ]
-        hash_match = re.search(r"'(%s)'" % _HEX32, window)
+        hash_match = re.search("'(" + _HEX32 + ")'", window)
         if hash_match:
             return hash_match.group(1).upper()
     # Older, unobfuscated builds: a hex string shortly after the anchor.
