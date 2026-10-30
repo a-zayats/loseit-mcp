@@ -28,6 +28,8 @@ from lose_it.core._gwt import build_envelope, fmt_num, parse_response
 from lose_it.core._http import HttpClient
 from lose_it.core.daily import get_daydate_key
 
+from .schema_overrides import register_schema_overrides
+
 _SERVICE = "com.loseit.core.client.service.LoseItRemoteService"
 _REQUEST_TOKEN = "com.loseit.core.client.service.ServiceRequestToken/1076571655"
 _DAY_DATE = "com.loseit.core.shared.model.DayDate/1611136587"
@@ -228,6 +230,10 @@ def get_weight_history(
     """
     if end < start:
         raise ValueError(f"end {end.isoformat()} is before start {start.isoformat()}")
+
+    # The pinned SDK catalog predates Lose It's GoalsSummary change; without
+    # the override every range response decodes partial and history fails.
+    register_schema_overrides()
 
     start_num = day_number_for(start)
     end_num = day_number_for(end)
